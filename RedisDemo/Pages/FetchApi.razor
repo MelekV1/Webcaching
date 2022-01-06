@@ -1,0 +1,92 @@
+﻿@page "/fetchapi"
+
+@using RedisDemo.Data
+@using RedisDemo.Extensions
+
+@inject IHttpClientFactory _clientFactory
+@inject IDistributedCache cache
+
+<h1>Cryptocurrency exchange informations</h1>
+
+<p>This component gives you insights about exchange rate for each cryptocurrency in a short time.</p>
+
+<button class="btn btn-primary" @onclick="Load"> Load exchange rates</button>
+
+@if (string.IsNullOrWhiteSpace(errorString) == false)
+{
+    <div class="h2">@errorString</div>
+}
+else if (cryptocurrencies is null && loadLocation == "")
+{
+    <p><em>Click the button to load the cryptocurrencies exchange rates</em></p>
+}
+else if (cryptocurrencies is null)
+{
+    <div class="h4">Loading...</div>
+}
+else
+{
+    <div class="h3 @isCacheData">@loadLocation</div>
+
+    <table class="table table-striped">
+        <thead class="thead-dark">
+            <tr>
+                <th>Cryptocurrency symbol</th>
+                <th>Price converted to USD</th>
+                <th>Spread</th>
+                <th>Volume 24h</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var w in cryptocurrencies.markets)
+            {
+                <tr>
+                    <td>@w.symbol</td>
+                    <td>@w.price</td>
+                    <td>@w.spread</td>
+                    <td>@w.volume_24h</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    MarketModel cryptocurrencies;
+    string errorString;
+    private string loadLocation = "";
+    private string isCacheData = "";
+
+    protected async Task Load()
+    {
+        cryptocurrencies = null;
+        loadLocation = null;
+
+        string recordKey = "ExchangeRates_" + DateTime.Now.ToString("yyyyMMdd");
+        cryptocurrencies = await cache.GetRecordAsync<MarketModel>(recordKey);
+        if (cryptocurrencies is null)
+        {
+            var client = _clientFactory.CreateClient();
+
+            try
+            {
+                cryptocurrencies = await client.GetFromJsonAsync<MarketModel>("https://www.cryptingup.com/api/markets");
+                errorString = null;
+            }
+            catch (Exception ex)
+            {
+                errorString = $"There was an error getting our data: { ex.Message }";
+            }
+            loadLocation = $"Loaded from API at { DateTime.Now }";
+            isCacheData = "";
+
+            await cache.SetRecordAsync(recordKey, cryptocurrencies);
+        }
+        else
+        {
+            loadLocation = $"Loaded from the cache at { DateTime.Now }";
+            isCacheData = "text-danger";
+        }
+
+    }
+}
